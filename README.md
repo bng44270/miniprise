@@ -10,4 +10,4 @@ To test the CMDB example app:
   
   
 ## Planned architecture diagram
-<img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png?raw=true" />
+<img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png" />
