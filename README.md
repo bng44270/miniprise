@@ -1,5 +1,5 @@
 # miniprise
-A Python library for building an enterprise-level, feature-rich backend using SQLite
+A Python library for building an enterprise-level, feature-rich platform using Flask and SQLite
 
 To test the CMDB example app:  
 1. Run ```$ python3```  
