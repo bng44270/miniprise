@@ -9,5 +9,6 @@ To test the CMDB example app:
 ```svr``` contains an instance of SqliteMiddlewareGroup.  The related database file will be created, tables create, and CMDB-related middleware modules will be loaded.
   
   
-## Planned architecture diagram
+## Planned architecture  
+Note that only the Middleware and data access components have been developed.  The front end UI, data rendering module, and other components have yet to be developed.  
 <img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png" />
