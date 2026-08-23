@@ -258,6 +258,7 @@ class SqliteDef(DataDef):
     
     self.TABLE = table
     self.DBFILE = dbfile
+    self.CACHE_READY = False
     
     self.__connect()
     
@@ -307,6 +308,9 @@ class SqliteDef(DataDef):
         self.LOG_BUFFER.append(s)
       
       self.CONN.commit()
+      
+      if self.CACHE_READY:
+        self.CACHE_READY = False
     else:
       return results.fetchall() if count == 0 else results.fetchmany(count)
   
@@ -353,6 +357,8 @@ class SqliteDef(DataDef):
     return result
   
   def Cache(self):
+    self.clear()
+    
     select_sql_fields = ",".join([a for a in self.FIELDS.keys()])
     select_sql = f"SELECT " + select_sql_fields + f" FROM {self.TABLE};"
     result = self.RunSql(select_sql)
@@ -363,6 +369,8 @@ class SqliteDef(DataDef):
         row[field[1]] = sql_row[field[0]]
       
       super().Insert(row)
+    
+    self.CACHE_READY = True
   
   def __createtable(self,table,fields):
     create_sql_fields = ",".join([f'{a} {self.FieldTypeMap[fields[a]].replace("<F>",a)}' for a in fields.keys() if not a.startswith("REF_")])
@@ -497,9 +505,6 @@ class SqliteDef(DataDef):
   
   def __numle2sql(self,v1,v2):
     return v1 + " <= " + self.__num2sql(v2)
-  
-  def CreateSqliteTable(fields=None,dbfile="",table="",uselog=False):
-    return SqliteDef(fields,dbfile,table,uselog)
 
 class SqliteDefGroup(dict):
   def __init__(self,dbfile="",maxlog=10000000):
@@ -519,19 +524,19 @@ class SqliteDefGroup(dict):
       self.__populatetables()
   
   def Insert(self,t,row={}):
-    self[t].Insert(row,self)
+    self[t].Insert(row)
     self.__commitlogs(t)
   
   def BulkInsert(self,t,rowset=[]):
-    self[t].BulkInsert(rowset,self)
+    self[t].BulkInsert(rowset)
     self.__commitlogs(t)
   
   def Update(self,t,q,update=[]):
-    self[t].Update(q,update,self)
+    self[t].Update(q,update)
     self.__commitlogs(t)
   
   def Delete(self,t,q):
-    self[t].Delete(q,self)
+    self[t].Delete(q)
     self.__commitlogs(t)
   
   def Query(self,t,q=[],f=[]):
@@ -541,7 +546,7 @@ class SqliteDefGroup(dict):
     self[t].LoadModule(m)
   
   def CreateTable(self,t,f):
-    self[t] = SqliteDef.CreateSqliteTable(f,self.DBFILE,t,True)
+    self[t] = SqliteDef(f,self.DBFILE,t,True)
     self.__commitlogs(t)
   
   def ExistsTable(self,t):
@@ -566,7 +571,7 @@ class SqliteDefGroup(dict):
   
   def __populatetables(self):
     for this_table in self.__listtables():
-      self[this_table] = SqliteDef.CreateSqliteTable(dbfile=self.DBFILE,table=this_table,uselog=True)
+      self[this_table] = SqliteDef(dbfile=self.DBFILE,table=this_table,uselog=True)
   
   def __listtables(self):
     t = []
