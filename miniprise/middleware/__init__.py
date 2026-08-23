@@ -498,78 +498,8 @@ class SqliteDef(DataDef):
   def __numle2sql(self,v1,v2):
     return v1 + " <= " + self.__num2sql(v2)
   
-  def CreateSqliteTable(fields="",dbfile="",table="",uselog=False):
+  def CreateSqliteTable(fields=None,dbfile="",table="",uselog=False):
     return SqliteDef(fields,dbfile,table,uselog)
-
-class SqliteDefGroup(dict):
-  def __init__(self,dbfile):
-    if len(dbfile) == 0:
-      raise Exception("No DB specified")
-    
-    if not exists(dbfile):
-      self.__createdbfile(dbfile)
-      
-    self.DBFILE = dbfile
-    self.LOGFILE = dbfile + ".log.gz"
-    self.MAX_LOG = maxlog
-    
-    self.NEXT_LOG_SAVE = len(listfilespec(self.LOGFILE + ".*")) + 1
-    
-    self.__populatetables()
-  
-  def Insert(self,t,row={}):
-    self[t].Insert(row)
-    self.__commitlogs(t)
-  
-  def Update(self,t,q,update=[]):
-    self[t].Update(q,update)
-    self.__commitlogs(t)
-  
-  def Delete(self,t,q):
-    self[t].Delete(q)
-    self.__commitlogs(t)
-  
-  def Query(self,t,q,f=[]):
-    return self[t].Query(q,f)
-  
-  def CreateTable(self,t,f):
-    self[t] = SqliteDef.CreateSqliteTable(f,self.DBFILE,t,True)
-    self.__commitlogs(t)
-  
-  def __commitlogs(self,t):
-    l = self[t].LOG_BUFFER.copy()
-    self[t].LOG_BUFFER.clear()
-    
-    l.reverse()
-    
-    logfile = gzip.open(self.LOGFILE,"at",encoding='utf-8')
-    
-    for line in l:
-      logfile.write(line + "\n")
-    
-    logfile.close()
-    
-    if getsize(self.LOGFILE) > self.MAX_LOG:
-      rename(self.LOGFILE,self.LOGFILE + self.NEXT_LOG_SAVE)
-      self.NEXT_LOG_SAVE = self.NEXT_LOG_SAVE + 1
-  
-  def __populatetables(self):
-    for this_table in self.__listtables():
-      self[this_table] = SqliteDef.CreateSqliteTable(dbfile=self.DBFILE,table=this_table,uselog=True)
-  
-  def __listtables(self):
-    t = []
-    c = sqlite3.connect(self.DBFILE)
-    resp = c.cursor().execute("SELECT name FROM sqlite_master WHERE type='table' AND name <> 'sqlite_sequence';")
-    
-    for table in resp.fetchall():
-      t.append(table[0])
-    
-    return t
-  
-  def __createdbfile(self,f):
-    c = sqlite3.connect(f)
-    c.commit()
 
 class SqliteDefGroup(dict):
   def __init__(self,dbfile="",maxlog=10000000):
@@ -585,7 +515,8 @@ class SqliteDefGroup(dict):
     
     self.NEXT_LOG_SAVE = len(listfilespec(self.LOGFILE + ".*")) + 1
     
-    self.__populatetables()
+    if self.__class__.__name__ == "SqliteDefGroup":
+      self.__populatetables()
   
   def Insert(self,t,row={}):
     self[t].Insert(row,self)
@@ -610,7 +541,7 @@ class SqliteDefGroup(dict):
     self[t].LoadModule(m)
   
   def CreateTable(self,t,f):
-    self[t] = SqliteMiddleware.CreateMiddlewareTable(f,self.DBFILE,t,True)
+    self[t] = SqliteDef.CreateSqliteTable(f,self.DBFILE,t,True)
     self.__commitlogs(t)
   
   def ExistsTable(self,t):
@@ -635,7 +566,7 @@ class SqliteDefGroup(dict):
   
   def __populatetables(self):
     for this_table in self.__listtables():
-      self[this_table] = SqliteMiddleware(dbfile=self.DBFILE,table=this_table,uselog=True)
+      self[this_table] = SqliteDef.CreateSqliteTable(dbfile=self.DBFILE,table=this_table,uselog=True)
   
   def __listtables(self):
     t = []
@@ -741,85 +672,22 @@ class SqliteMiddleware(SqliteDef):
     return SqliteMiddleware(fields,dbfile,table,uselog)
 
 
-class SqliteMiddlewareGroup(dict):
+class SqliteMiddlewareGroup(SqliteDefGroup):
   def __init__(self,dbfile="",maxlog=10000000):
-    if len(dbfile) == 0:
-      raise Exception("No DB specified")
-    
-    if not exists(dbfile):
-      self.__createdbfile(dbfile)
-      
-    self.DBFILE = dbfile
-    self.LOGFILE = dbfile + ".log.gz"
-    self.MAX_LOG = maxlog
-    
-    self.NEXT_LOG_SAVE = len(listfilespec(self.LOGFILE + ".*")) + 1
+    super().__init__(dbfile,maxlog)
     
     self.__populatetables()
-  
-  def Insert(self,t,row={}):
-    self[t].Insert(row,self)
-    self.__commitlogs(t)
-  
-  def BulkInsert(self,t,rowset=[]):
-    self[t].BulkInsert(rowset,self)
-    self.__commitlogs(t)
-  
-  def Update(self,t,q,update=[]):
-    self[t].Update(q,update,self)
-    self.__commitlogs(t)
-  
-  def Delete(self,t,q):
-    self[t].Delete(q,self)
-    self.__commitlogs(t)
-  
-  def Query(self,t,q=[],f=[]):
-    return self[t].Query(q,f)
   
   def LoadModule(self,t,m):
     self[t].LoadModule(m)
   
   def CreateTable(self,t,f):
-    self[t] = SqliteMiddleware.CreateMiddlewareTable(f,self.DBFILE,t,True)
-    self.__commitlogs(t)
-  
-  def ExistsTable(self,t):
-    return t in self.keys()
-  
-  def __commitlogs(self,t):
-    l = self[t].LOG_BUFFER.copy()
-    self[t].LOG_BUFFER.clear()
-    
-    l.reverse()
-    
-    logfile = gzip.open(self.LOGFILE,"at",encoding='utf-8')
-    
-    for line in l:
-      logfile.write(line + "\n")
-    
-    logfile.close()
-    
-    if getsize(self.LOGFILE) > self.MAX_LOG:
-      rename(self.LOGFILE,self.LOGFILE + self.NEXT_LOG_SAVE)
-      self.NEXT_LOG_SAVE = self.NEXT_LOG_SAVE + 1
+    self[t] = SqliteMiddleware(f,self.DBFILE,t,True)
+    self._SqliteDefGroup__commitlogs(t)
   
   def __populatetables(self):
-    for this_table in self.__listtables():
+    for this_table in self._SqliteDefGroup__listtables():
       self[this_table] = SqliteMiddleware(dbfile=self.DBFILE,table=this_table,uselog=True)
-  
-  def __listtables(self):
-    t = []
-    c = sqlite3.connect(self.DBFILE)
-    resp = c.cursor().execute("SELECT name FROM sqlite_master WHERE type='table' AND name <> 'sqlite_sequence';")
-    
-    for table in resp.fetchall():
-      t.append(table[0])
-    
-    return t
-  
-  def __createdbfile(self,f):
-    c = sqlite3.connect(f)
-    c.commit()
 
 
 class SqliteMiddlewareModuleBase:
