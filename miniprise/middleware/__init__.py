@@ -8,6 +8,9 @@ import sqlite3
 import gzip
 
 typeof = lambda v : type(v).__name__
+is_datadef = lambda x : "DataDef" in [a.__name__ for a in x.__class__().__class__.__mro__]
+is_sqlite = lambda x : "SqliteDef" in [a.__name__ for a in x.__class__().__class__.__mro__]
+is_sqlite_middleware = lambda x : "SqliteMiddleware" in [a.__name__ for a in x.__class__().__class__.__mro__]
 
 class DataDef(list):
   """
@@ -31,10 +34,10 @@ class DataDef(list):
     self.TYPES["BooleanType"] = "boolean"
     
     self.TYPEMAP = {}
-    self.TYPEMAP["float"] = "number"
-    self.TYPEMAP["int"] = "number"
-    self.TYPEMAP["str"] = "string"
-    self.TYPEMAP["bool"] = "boolean"
+    self.TYPEMAP["float"] = ["number"]
+    self.TYPEMAP["int"] = ["number"]
+    self.TYPEMAP["str"] = ["string"]
+    self.TYPEMAP["bool"] = ["boolean"]
     
     if not skipfieldval:
       if not self._validatefields(fields):
@@ -96,8 +99,7 @@ class DataDef(list):
     
     for thisidx in r:
       for thisupdate in updates:
-        if not self.__validateupdate(thisupdate):
-          raise Exception(f"Invalid update ({str(thisupdate)})")
+        self.__validateupdate(thisupdate)
         
         self[thisidx][thisupdate[0]] = thisupdate[1]          
   
@@ -129,8 +131,7 @@ class DataDef(list):
       # Invalid insert will raise an exception (age must be a number)
       d.insert({"name":"Zeke","age":"43","retired":False})
     """
-    if not self.__validaterow(row):
-      raise Exception(f"Invalid insert ({str(row)})")
+    self.__validaterow(row)
     
     self.append(row)
   
@@ -146,22 +147,17 @@ class DataDef(list):
   
   def __validateupdate(self,fieldupdate):
     if not len(fieldupdate) == 2:
-      return False
+      raise Exception("Error:  Must profile field and value in update")
     
-    if not self.__validaterow({fieldupdate[0]:fieldupdate[1]}):
-      return False
+    self.__validaterow({fieldupdate[0]:fieldupdate[1]})
     
-    return True
-  
   def __validaterow(self,row):
     for thisfield in row.keys():
       if not thisfield in self.FIELDS.keys():
-        return False
+        raise Exception(f"{thisfield} not defined in schema")
       
-      if not self.TYPES[self.FIELDS[thisfield]] == self.TYPEMAP[typeof(row[thisfield])]:
-        return False
-    
-    return True
+      if not self.TYPES[self.FIELDS[thisfield]] in self.TYPEMAP[typeof(row[thisfield])]:
+        raise Exception(f"data type '{self.TYPEMAP[typeof(row[thisfield])]}' does not match schema type '{self.TYPES[self.FIELDS[thisfield]]}' for field {thisfield}")
   
   def _validatefields(self,fields):
     validfields = [a for a in fields.values() if a in self.TYPES.keys()]
@@ -273,8 +269,8 @@ class SqliteDef(DataDef):
     self.TYPES["PrimaryKeyType"] = "primarykey"
     self.TYPES["ForeignKeyType"] = "foreignkey"
     
-    self.TYPEMAP["pkey"] = "primarykey"
-    self.TYPEMAP["fkey"] = "foreignkey"
+    self.TYPEMAP["int"].append("primarykey")
+    self.TYPEMAP["int"].append("foreignkey")
     
     if not self._validatefields({k:v for k,v in fields.items() if not k.startswith("REF_")}):
       raise Exception(f"Invalid schema definition ({str(fields)})")
@@ -505,6 +501,41 @@ class SqliteDef(DataDef):
   
   def __numle2sql(self,v1,v2):
     return v1 + " <= " + self.__num2sql(v2)
+
+class SqliteDefJoin():
+  def __init__(self,right=None,left=None):
+    if not right or not left:
+      raise Exception("Missing right or left table")
+    
+    self.RIGHT = {}
+    self.RIGHT["table"] = right
+    self.RIGHT["fields"] = []
+    self.RIGHT["query"] = []
+    self.LEFT = {}
+    self.LEFT["table"] = left
+    self.LEFT["fields"] = ["*"]
+    self.LEFT["query"] = []
+    
+  
+  def AddRightFields(self,f):
+    self.RIGHT["fields"].append(f)
+  
+  def SetRightFieldsAll(self):
+    self.RIGHT["fields"].clear()
+  
+  def AddLeftFields(self,f):
+    self.LEFT["fields"].append(f)
+  
+  def SetLeftFieldsAll(self):
+    self.LEFT["fields"].clear()
+  
+  
+  def __buildjoin(self):
+    fields = [f"a.{f}" for f in self.RIGHT["fields"]] + [f"b.{f}" for f in self.LEFT["fields"]]
+    querys = [(f"a.{f[0]}",f[1],f[2]) for f in self.RIGHT["query"]] + [(f"b.{f[0]}",f[1],f[2]) for f in self.LEFT["query"]]
+    field_sql = ",".join(fields)
+    query_sql = " AND ".join(querys)
+    return f"SELECT {field_sql} FROM {self.RIGHT["table"]} JOIN {self.LEFT["table"]} "
 
 class SqliteDefGroup(dict):
   def __init__(self,dbfile="",maxlog=10000000):

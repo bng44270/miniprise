@@ -10,5 +10,21 @@ To test the CMDB example app:
   
   
 ## Planned architecture  
+Core Components:  
+* Database Access  
+* Middleware  
+* Data Rendering  
+* Front End  
+  
+Future Core Extensions:  
+* KPI  
+* Ticket  
+* CMDB  
+* Integrations  
+* more?  
+  
 Note that only the Middleware and data access components have been developed.  The front end UI, data rendering module, and other components have yet to be developed.  
 <img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png" />
+  
+  
+
