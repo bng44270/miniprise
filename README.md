@@ -23,7 +23,7 @@ Future Core Extensions:
 * Integrations  
 * more?  
   
-Note that only the Middleware and data access components have been developed.  The front end UI, data rendering module, and other components have yet to be developed.  
+### Future state rough design:  
 <img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png" />
   
   
