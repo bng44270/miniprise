@@ -17,9 +17,9 @@ Core Components:
 * Front End  
   
 Future Core Extensions:  
-* KPI  
-* Ticket  
+* Ticketing  
 * CMDB  
+* KPI/metrics  
 * Integrations  
 * more?  
   
