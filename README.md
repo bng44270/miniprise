@@ -5,7 +5,7 @@ To test the CMDB example app:
 1. Run ```$ python3```  
 2. Run ```>>> from tests.cmdb import svr```  
 
-```svr``` contains an instance of SqliteMiddlewareGroup.  The related database file will be created, tables create, and CMDB-related middleware modules will be loaded.
+```svr``` contains an instance of SqliteMiddlewareGroup configured with the CMDB module.  The related database file will be created, tables create, and CMDB-related middleware modules will be loaded.
   
   
 ## Planned architecture  
