@@ -14,12 +14,13 @@ Core Components:
 * Middleware  
 * Data Rendering  
 * Front End  
+* Integrations  
   
 Future Core Extensions:  
 * KPI  
-* Ticket  
+* Ticketing  
 * CMDB  
-* Integrations  
+* Space Management
 * more?  
   
 Note that only the Middleware and data access components have been developed.  The front end UI, data rendering module, and other components have yet to be developed.  
