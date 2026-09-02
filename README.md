@@ -3,8 +3,7 @@ A Python library for building an enterprise-level, feature-rich platform using F
 
 To test the CMDB example app:  
 1. Run ```$ python3```  
-2. Run ```>>> from tests.cmdb import InitiailizeCMDB```  
-3. Run ```>>> svr = InitializeCMDB()```
+2. Run ```>>> from tests.cmdb import svr```  
 
 ```svr``` contains an instance of SqliteMiddlewareGroup.  The related database file will be created, tables create, and CMDB-related middleware modules will be loaded.
   
@@ -17,13 +16,13 @@ Core Components:
 * Front End  
   
 Future Core Extensions:  
-* Ticketing  
+* KPI  
+* Ticket  
 * CMDB  
-* KPI/metrics  
 * Integrations  
 * more?  
   
-### Future state rough design:  
+Note that only the Middleware and data access components have been developed.  The front end UI, data rendering module, and other components have yet to be developed.  
 <img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png" />
   
   
