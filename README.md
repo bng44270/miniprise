@@ -23,7 +23,7 @@ Future Core Extensions:
 * Space Management
 * more?  
   
-Note that only the Middleware and data access components have been developed.  The front end UI, data rendering module, and other components have yet to be developed.  
+Note that only the Middleware and data access components are under development.  The front end UI, data rendering module, and other components have yet to be developed.  
 <img src="https://github.com/bng44270/miniprise/blob/main/media/architecture.png" />
   
   
