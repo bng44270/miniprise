@@ -1,5 +1,7 @@
 from miniprise.middleware import SqliteMiddlewareGroup
-from miniprise.middleware.modules import cmdb as mods
+from miniprise.middleware.modules import cmdb, auth
 
 svr = SqliteMiddlewareGroup('cmdb.db')
-svr.LoadModule(mods.CIModule)
+svr.LoadModule(auth.AuthModule)
+svr.LoadModule(cmdb.CIModule)
+
