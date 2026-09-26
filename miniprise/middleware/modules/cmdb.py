@@ -1,14 +1,13 @@
-from .. import SqliteMiddlewareModuleBase
+from . import SqliteMiddlewareModuleBase
 
-class CIModule(SqliteMiddlewareModuleBase):
-  def __init__(self):
+class CMDBModule(SqliteMiddlewareModuleBase):
+  def __init__(self,mods=[]):
     super().__init__()
 
-    self.AddTable("ci",{"id":"PrimaryKeyType","name":"StringType"})
+    self.AddTable("ci",{"id":"PrimaryKeyType","name":"StringType","parent":"ForeignKeyType","REF_parent":"ci.id"})
     self.SetBeforeInsert('ci',self.BeforeInsertCI,10)
     self.SetBeforeUpdate('ci',self.BeforeUpdateCI,10)
     
-    self.AddTable("ci_rel_type",{"id":"PrimaryKeyType","name":"StringType","opposite":"StringType"})
     self.AddTable("ci_cat",{"id":"PrimaryKeyType","name":"StringType"})
     self.AddTable("ci_cat_attr",{"id":"PrimaryKeyType","name":"StringType","cat":"ForeignKeyType","REF_cat":"ci_cat.id"})
     
@@ -18,23 +17,15 @@ class CIModule(SqliteMiddlewareModuleBase):
     self.SetAfterDelete('ci_cat_uses',self.AfterDeleteCICatUses,100)
     
     self.AddTable("ci_attr",{"item":"ForeignKeyType","attr":"ForeignKeyType","val":"StringType","multi":"BooleanType","REF_item":"ci.id","REF_attr":"ci_cat_attr.id"})
-    self.AddTable("ci_rel",{"parent":"ForeignKeyType","child":"ForeignKeyType","reltype":"ForeignKeyType","REF_parent":"ci.id","REF_child":"ci.id","REF_reltype":"ci_rel_type.id"})
     self.AddTable("discovered_ci_rule",{"id":"PrimaryKeyType","name":"StringType","cat":"ForeignKeyType","REF_cat":"ci_cat.id"})
     self.AddTable("discovered_ci",{"name":"StringType","rule":"ForeignKeyType","lastseen":"NumberType","REF_rule":"discovered_ci_rule.id"})
     self.SetAfterInsert('discovered_ci',self.AfterInsertDiscoveredCI)
-    self.AddTable("discovered_rel_rule",{"id":"PrimaryKeyType","pattern":"StringType","reltype":"ForeignKeyType","REF_reltype":"ci_rel_type.id"})
-    self.AddTable("discovered_rel",{"parent":"ForeignKeyType","child":"ForeignKeyType","rule":"ForeignKeyType","lastseen":"NumberType","REF_parent":"ci.id","REF_child":"ci.id","REF_rule":"discovered_rel_rule.id"})
-    self.SetAfterInsert('discovered_rel',self.AfterInsertDiscoveredRelationship)
 
-
-  def InitModule(self, dbref):
-    dbref.CreateJoinView('ci_cat_attrs','ci',{"ci.name":"ci_name","ci_cat.name":"ci_cat","ci_cat_attr.name":"attr","ci_attr.val":"attr_val"},{"ci_cat_uses":[('ci_cat.id','EQ','ci_cat_uses.cat'),('ci.id','EQ','ci_cat_uses.item')],"ci_cat":[("ci_cat.id","EQ","ci_cat_uses.cat")],"ci_cat_attr":[("ci_cat.id","EQ","ci_cat_attr.cat")],"ci_attr":[("ci_attr.attr","EQ","ci_cat_attr.id")]})
-    
-    rels = [{"name":"Open on","opposite":"Has open"},{"name":"Runs","opposite":"Runs on"}]
-    cats = {"Computer":["Display size","Memory","CPU","Storage","MAC address"],"nmap-discovered":['Open port','IP address','OS name','OS vendor','OS family','OS type','OS generation','']}
+    self.AddJoinView('ci_cat_attrs','ci',{"ci.name":"ci_name","ci_cat.name":"ci_cat","ci_cat_attr.name":"attr","ci_attr.val":"attr_val"},{"ci_cat_uses":[('ci_cat.id','EQ','ci_cat_uses.cat'),('ci.id','EQ','ci_cat_uses.item')],"ci_cat":[("ci_cat.id","EQ","ci_cat_uses.cat")],"ci_cat_attr":[("ci_cat.id","EQ","ci_cat_attr.cat")],"ci_attr":[("ci_attr.attr","EQ","ci_cat_attr.id")]})
+  
+  def InitModule(self, dbref,mods):
+    cats = {"Computer":["Display size","Memory","CPU","Storage","MAC address"],"nmap-discovered":['Open port','IP address','OS name','OS vendor','OS family','OS type','OS generation']}
     dbref.BulkInsert('ci_cat',[{"name":k} for k in cats.keys()])
-
-    dbref.BulkInsert('ci_rel_type',rels)
     
     for this_cat in cats.keys():
       cat_id = self.__getcatbyname(this_cat,dbref)
