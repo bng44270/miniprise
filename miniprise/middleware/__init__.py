@@ -11,6 +11,26 @@ is_datadef = lambda x : "DataDef" in [a.__name__ for a in x.__class__().__class_
 is_sqlite = lambda x : "SqliteDef" in [a.__name__ for a in x.__class__().__class__.__mro__]
 is_sqlite_middleware = lambda x : "SqliteMiddleware" in [a.__name__ for a in x.__class__().__class__.__mro__]
 
+def SqiteJoinType(self,right=False,left=False,outer=False,inner=False,full=False):
+  j = []
+  
+  if right:
+    j.append("RIGHT")
+  elif left:
+    j.append("LEFT")
+  elif full:
+    j.append("FULL")
+  
+  if inner:
+    j.append("INNER")
+  elif outer:
+    j.append("OUTER")
+  
+  if "INNER" in j and len(j) == 2:
+    j.remove("INNER")
+  
+  return " ".join(j)
+
 class DataDef(list):
   """
     DataDef (extends Python List object)
@@ -28,15 +48,9 @@ class DataDef(list):
   """
   def __init__(self,fields,data=[],skipfieldval=False):
     self.TYPES = {}
-    self.TYPES["StringType"] = "string"
-    self.TYPES["NumberType"] = "number"
-    self.TYPES["BooleanType"] = "boolean"
-    
-    self.TYPEMAP = {}
-    self.TYPEMAP["float"] = ["number"]
-    self.TYPEMAP["int"] = ["number"]
-    self.TYPEMAP["str"] = ["string"]
-    self.TYPEMAP["bool"] = ["boolean"]
+    self.TYPES["StringType"] = "str"
+    self.TYPES["NumberType"] = "float"
+    self.TYPES["BooleanType"] = "bool"
     
     if not skipfieldval:
       if not self._validatefields(fields):
@@ -155,8 +169,8 @@ class DataDef(list):
       if not thisfield in self.FIELDS.keys():
         raise Exception(f"{thisfield} not defined in schema")
       
-      if not self.TYPES[self.FIELDS[thisfield]] in self.TYPEMAP[typeof(row[thisfield])]:
-        raise Exception(f"data type '{self.TYPEMAP[typeof(row[thisfield])]}' does not match schema type '{self.TYPES[self.FIELDS[thisfield]]}' for field {thisfield}")
+      if not self.TYPES[self.FIELDS[thisfield]] == typeof(row[thisfield]):
+        raise Exception(f"data type '{typeof(row[thisfield])}' does not match schema type '{self.FIELDS[thisfield]}' for field {thisfield}")
   
   def _validatefields(self,fields):
     validfields = [a for a in fields.values() if a in self.TYPES.keys()]
@@ -202,14 +216,6 @@ class DataDef(list):
   def __q_contains(self,v1,v2):
     return str(v2) in str(v1)
 
-class pkey(int):
-  def __new__(c,v):
-    return super().__new__(c,v)
-
-class fkey(int):
-  def __new__(c,v):
-    return super().__new__(c,v)
-
 class SqliteDef(DataDef):
   """
     SqliteDef (extends above DataDef object)
@@ -238,7 +244,7 @@ class SqliteDef(DataDef):
     self.FieldTypeMap = {}
     self.FieldTypeMap["StringType"] = "TEXT"
     self.FieldTypeMap["NumberType"] = "REAL"
-    self.FieldTypeMap["BooleanType"] = "INTEGER CHECK (<F> IN (0,1)) DEFAULT 0"
+    self.FieldTypeMap["BooleanType"] = "INTEGER CHECK (<F> >=0 and <F> <=1) DEFAULT 0"
     self.FieldTypeMap["PrimaryKeyType"] = "INTEGER PRIMARY KEY AUTOINCREMENT"
     self.FieldTypeMap["ForeignKeyType"] = "INTEGER"
     
@@ -265,11 +271,8 @@ class SqliteDef(DataDef):
 
     super().__init__(fields,skipfieldval=True)
     
-    self.TYPES["PrimaryKeyType"] = "primarykey"
-    self.TYPES["ForeignKeyType"] = "foreignkey"
-    
-    self.TYPEMAP["int"].append("primarykey")
-    self.TYPEMAP["int"].append("foreignkey")
+    self.TYPES["PrimaryKeyType"] = "int"
+    self.TYPES["ForeignKeyType"] = "int"
     
     if not self._validatefields({k:v for k,v in fields.items() if not k.startswith("REF_")}):
       raise Exception(f"Invalid schema definition ({str(fields)})")
@@ -318,6 +321,15 @@ class SqliteDef(DataDef):
     insert_sql_values = ",".join([self.FIELD_CONV[a](row[a]) for a in row.keys()])
     insert_sql = f'INSERT INTO {self.TABLE}(' + insert_sql_fields + ") VALUES (" + insert_sql_values + ");"
     self.RunSql(insert_sql)
+
+    if "PrimaryKeyType" in self.FIELDS.values():
+      pk = [k for (k,v) in self.FIELDS.items() if v == 'PrimaryKeyType']
+      q = [(k,'EQ',v) for (k,v) in row.items()]
+      result = self.Query(q,pk)
+      if len(result) == 1 and len(result[0]) == 1:
+        return result[0][0]
+    else:
+      return None
   
   def BulkInsert(self,rowset=[]):
     insert_sql_fields = ",".join([a for a in rowset[0].keys()])
@@ -344,11 +356,25 @@ class SqliteDef(DataDef):
     self.RunSql(update_sql)
   
   def Query(self,q=[],f=[],count=0,view=False):
-    query_sql_fields = ','.join(f) if len(f) > 0 else "*"
+    usefields = f if len(f) > 0 else [a for a in self.FIELDS.keys()]
+    query_sql_fields = ','.join(usefields)
     query_sql_where = " AND ".join([self.COMPARES[(self.FIELDS[a[0]],a[1],self.FIELDS[a[0]])](a[0],a[2]) for a in q])
     query_sql = f'SELECT ' + query_sql_fields + f' FROM {self.TABLE}' + ((' WHERE ' + query_sql_where) if len(q) > 0 else "") + ';'
     
-    return self.RunSql(query_sql,count) if not view else {"type":"single","fields":self.FIELDS,"sql":query_sql}
+    if view:
+      return {"type":"single","fields":self.FIELDS,"sql":query_sql}
+    else:
+      returndata = []
+      data = self.RunSql(query_sql,count)
+      for row in data:
+        newrow = []
+        for i in range(0,len(row)):
+          newitem = eval(self.TYPES[self.FIELDS[usefieldsd[i]]] + "(row[i])")
+          newrow.append(newitem)
+        returndata.append(newrow)
+      return returndata
+  
+  #return self.RunSql(query_sql,count) if not view else {"type":"single","fields":self.FIELDS,"sql":query_sql}
   
   def Cache(self):
     self.clear()
@@ -389,6 +415,7 @@ class SqliteDef(DataDef):
     
     for this_f in f:
       bare_field = this_f[1].replace(this_f[0],"<F>")
+
       ddtype = self.__unmapfieldtype(bare_field)
       d[this_f[0]] = ddtype
     
@@ -516,12 +543,19 @@ class SqliteDefGroup(dict):
     
     if self.__class__.__name__ == "SqliteDefGroup":
       self.__populatetables()
+
+    self.JOIN_CONDS = {}
+    self.JOIN_CONDS['EQ'] = "=="
+    self.JOIN_CONDS['GT'] = ">"
+    self.JOIN_CONDS['LT'] = "<"
+    self.JOIN_CONDS['CN'] = "LIKE"
     
     self.VIEWS = {}
   
   def Insert(self,t,row={}):
-    self[t].Insert(row)
+    newpk = self[t].Insert(row)
     self.__commitlogs(t)
+    return newpk
   
   def BulkInsert(self,t,rowset=[]):
     self[t].BulkInsert(rowset)
@@ -535,67 +569,61 @@ class SqliteDefGroup(dict):
     self[t].Delete(q)
     self.__commitlogs(t)
   
-  def Query(self,t,q=[],f=[],count=0):
+  def Query(self,t,q=[],f=[],count=0,view=False):
     if t in self.keys():
-      return self[t].Query(q,f)
+      return self[t].Query(q,f,count,view)
     elif t in self.VIEWS.keys():
+      usetab = self[list(self.keys())[0]]
+
       query_sql_fields = ','.join(f) if len(f) > 0 else "*"
-      query_sql_where = " AND ".join([usetab.COMPARES[(usetab.FIELDS[a[0]],a[1],usetab.FIELDS[a[0]])](a[0],a[2]) for a in q])
-      view_sql = f"SELECT {query_sql_fields} FROM {t}" +  ((f" WHERE {query_sql_where}") if len(q) > 0 else "") + ";"
-      return usetab.RunSQL(view_sql,count)
+      query_sql_where = " AND ".join([usetab.COMPARES[(self.VIEWS[t][a[0]],a[1],self.VIEWS[t][a[0]])](a[0],a[2]) for a in q])
+      query_sql = f'SELECT ' + query_sql_fields + f' FROM {t}' + ((' WHERE ' + query_sql_where) if len(q) > 0 else "") + ';'
+
+      return usetab.RunSql(query_sql,count)
   
-  def JoinType(self,right=False,left=False,outer=False,inner=False,full=False):
-    j = []
-    
-    if right:
-      j.append("RIGHT")
-    elif left:
-      j.append("LEFT")
-    elif full:
-      j.append("FULL")
-    
-    if inner:
-      j.append("INNER")
-    elif outer:
-      j.append("OUTER")
-    
-    if "INNER" in j and len(j) == 2:
-      j.remove("INNER")
-    
-    return " ".join(j)
-  
-  def JoinQuery(self,t,f=[],j={},where=[],jointype=None,view=False):
+  def JoinQuery(self,t,f={},j={},where=[],jointype=None,view=False):
     all_fields = {f"a.{k}":v for (k,v) in self[t].FIELDS.items()}
-    fmap = {t:'a'}
+    tmap = {t:'a'}
     
     jar = list(string.ascii_lowercase[1:])
     
     join_list = []
     for this_join in j.keys():
-      fmap[this_join] = jar[list(j.keys()).index(this_join)]
-      all_fields = all_fields | {f"{fmap[this_join]}.{k}":v for (k,v) in self[this_join].FIELDS.items()}
+      tmap[this_join] = jar[list(j.keys()).index(this_join)]
+      all_fields = all_fields | {f"{tmap[this_join]}.{k}":v for (k,v) in self[this_join].FIELDS.items()}
     
     for this_join in j.keys():
-      on_query = " AND ".join([self[t].COMPARES[(all_fields[a[0].replace(t,fmap[t]).replace(j,fmap[j])],a[1],all_fields[a[0].replace(t,fmap[t]).replace(j,fmap[j])])](a[0].replace(t,fmap[t]).replace(j,fmap[j]),(a[2].replace(t,fmap[t]).replace(j,fmap[j])) if typeof(a[2]) == 'str' else a[2]) for a in j[this_join]])
+      on_query = " AND ".join([f"{self.__swaptable(tmap,a[0])} {self.JOIN_CONDS[a[1]]} {self.__swaptable(tmap,a[2])}" for a in j[this_join]])
       join_type = f"{jointype} " if jointype else ""
-      join_list.append(f"{jointype}JOIN {this_join} ON {on_query}")
-    
-    # ^ fix on_query value to use all_fields and fmap
-    #[f"{[v for (k,v) in fmap.items() if k == a.split('.')[0]][0]}.{a.split(".")[1]}" for a in all_field]
-    
-    get_fields = ",".join([f"{[v for (k,v) in fmap.items() if k == a.split('.')[0]][0]}.{a.split(".")[1]}" for a in f]) if len(f) > 0 else "*"
-    where_query = " AND ".join([self[t].COMPARES[(all_fields[a[0].replace(t,fmap[t]).replace(j,fmap[j])],a[1],all_fields[a[0].replace(t,fmap[t]).replace(j,fmap[j])])](a[0].replace(t,fmap[t]).replace(j,fmap[j]),(a[2].replace(t,fmap[t]).replace(j,fmap[j])) if typeof(a[2]) == 'str' else a[2]) for a in where])
+      join_list.append(f"{join_type}JOIN {this_join} {tmap[this_join]} ON {on_query}")
+
+    join_fields = {v:all_fields[self.__swaptable(tmap,k)] for (k,v) in f.items()}
+    get_fields = ",".join([f"{self.__swaptable(tmap,k)} AS \"{v}\"" for (k,v) in f.items()]) if len(f) > 0 else "*"
+    where_query = " AND ".join([self[t].COMPARES[(all_fields[self.__swaptable(tmap,a[0])],a[1],all_fields[self.__swaptable(tmap,a[0])])](self.__swaptable(tmap,a[0]),a[2]) for a in where])
     join_sql = f"SELECT {get_fields} FROM {t} a " + (" ".join(join_list) if len(join_list) > 0 else "") + ((f" WHERE {where_query}") if len(where) > 0 else "") + ";"
     
-    return self[t].RunSql(join_sql) if not view else {"type":"join","a":t,"b":j,"fields": ({f"{t}.{k}":v for (k,v) in self[t].FIELDS.item() if f"a.{k}" in all_fields.keys()} | {f"{t}.{k}":v for (k,v) in self[j].FIELDS.items() if f"b.{k}" in all_fields.items()}), "sql":join_sql}
+    return self[t].RunSql(join_sql) if not view else {"type":"join","t":t,"j":j,"fields":join_fields,"sql":join_sql}
   
-  def CreateView(self,n,s):
-    if not n in self.VIEWS:
-      c = sqlite3.connect(self.DBFILE)
-      c.cursor().execute(f"CREATE VIEW {n} as {s}")
-      c.commit()
+  def CreateTableView(self,n,t,q=[],f=[]):
+    if not n in self.VIEWS.keys():
+      viewobj = self.Query(t,q,f,view=True)
+      usefield = {k:self[t].FIELDS[k] for k in f}
+      create_sql = f"CREATE VIEW {n} AS {viewobj["sql"]}"
+      self[t].RunSql(create_sql)
       
-      self.VIEWS.append(n)
+      self.VIEWS[n] = usefield
+  
+  def CreateJoinView(self,n,t,f={},j={},where=[],jointype=None):
+    if not n in self.VIEWS.keys():
+      # throw error if view field name contains a space
+      if len([a for a in f.values() if ' ' in a]) > 0:
+        raise Exception(f"Invalid view field names ({",".join(f.values())})")
+      
+      viewobj = self.JoinQuery(t,f,j,where,jointype,view=True)
+      create_sql = f"CREATE VIEW {n} AS {viewobj["sql"]}"
+      self[t].RunSql(create_sql)
+      
+      self.VIEWS[n] = viewobj['fields']
   
   def CreateTable(self,t,f):
     self[t] = SqliteDef(f,self.DBFILE,t,True)
@@ -603,6 +631,11 @@ class SqliteDefGroup(dict):
   
   def ExistsTable(self,t):
     return t in self.keys()
+  
+  def __swaptable(self,m,s):
+    for t in m.keys():
+      s = re.sub(re.compile(f"{t}\\.(.*)$"),f"{m[t]}.\\1",s)
+    return s
   
   def __commitlogs(self,t):
     l = self[t].LOG_BUFFER.copy()
@@ -639,7 +672,6 @@ class SqliteDefGroup(dict):
     c = sqlite3.connect(f)
     c.commit()
 
-
 class SqliteMiddleware(SqliteDef):
   """
     SqliteMiddleware - implement middleware containing Pre- and Post- Insert, Update, and Delete events
@@ -668,11 +700,13 @@ class SqliteMiddleware(SqliteDef):
       mod_name = this_mod["Mod"]
       passdata[mod_name] = this_mod["Run"](row,(ref if ref else self)) or False
     
-    super().Insert(row)
+    newpk = super().Insert(row)
     
     for this_mod in sorted([{"Run":self.MODS[k].AfterInsert,"Priority":self.MODS[k].AfterInsertPriority,"Mod":k} for k in self.MODS.keys() if self.MODS[k].AfterInsert],key=lambda job: job['Priority']):
       mod_name = this_mod["Mod"]
       this_mod["Run"](row,(ref if ref else self),passdata[mod_name])
+
+    return newpk
   
   def BulkInsert(self,rowset=[],ref=None):
     passdata = {}
@@ -721,8 +755,12 @@ class SqliteMiddleware(SqliteDef):
       mod_name = this_mod["Mod"]
       this_mod["Run"](q,(ref if ref else self),passdata[mod_name])
   
-  def Query(self,q=[],f=[],count=0):
-    return super().Query(q,f,count)
+  def Query(self,q=[],f=[],count=0,view=False,ref=None):
+    for this_mod in sorted([{"Run":self.MODS[k].BeforeQuery,"Priority":self.MODS[k].BeforeQueryPriority,"Mod":k} for k in self.MODS.keys() if self.MODS[k].BeforeDelete],key=lambda job: job['Priority']):
+      mod_name = this_mod["Mod"]
+      this_mod["Run"](q,f,(ref if ref else self)) or False
+    
+    return super().Query(q,f,count,view)
   
   def AddModule(self,n,f):
     self.MODS[n] = f
@@ -734,12 +772,14 @@ class SqliteMiddleware(SqliteDef):
 class SqliteMiddlewareGroup(SqliteDefGroup):
   def __init__(self,dbfile="",maxlog=10000000):
     super().__init__(dbfile,maxlog)
-    
+    self.MODULES = {}
+
     self.__populatetables()
   
   def Insert(self,t,row={}):
-    self[t].Insert(row,self)
+    newpk = self[t].Insert(row,self)
     self._SqliteDefGroup__commitlogs(t)
+    return newpk
   
   def BulkInsert(self,t,rowset=[]):
     self[t].BulkInsert(rowset,self)
@@ -753,22 +793,35 @@ class SqliteMiddlewareGroup(SqliteDefGroup):
     self[t].Delete(q,self)
     self._SqliteDefGroup__commitlogs(t)
   
-  def Query(self,t,q=[],f=[],count=0):
-    if t in self.keys():
-      return self[t].Query(q,f)
-    elif t in self.VIEWS:
-      usetab = self[self.keys()[0]]
-      query_sql_fields = ','.join(f) if len(f) > 0 else "*"
-      query_sql_where = " AND ".join([usetab.COMPARES[(usetab.FIELDS[a[0]],a[1],usetab.FIELDS[a[0]])](a[0],a[2]) for a in q])
-      view_sql = f"SELECT {query_sql_fields} FROM {t}" +  ((f" WHERE {query_sql_where}") if len(q) > 0 else "") + ";"
-      print(view_sql)
-      return usetab.RunSQL(view_sql,count)
+  def Query(self,t,q=[],f=[],count=0,view=False):
+    return self[t].Query(q,f,count,view,self)
   
   def LoadModule(self,m):
-    this_mod = m()
-    for table in this_mod.keys():
-      self.CreateTable(table,this_mod[table]["schema"])
-      self[table].AddModule(this_mod[table]['modname'],this_mod[table]['Triggers'])
+    this_mod = m(self.MODULES.keys())
+    module_name = this_mod.mod_name
+    self.MODULES[module_name] = {"tables_exist":False,"tables":[],"views":[], "functions":this_mod.FUNCTIONS}
+
+    for table in this_mod.TABLES.keys():
+      self.MODULES[module_name]['tables'].append(table)
+      if not table in self.keys():
+        self.CreateTable(table,this_mod.TABLES[table]["schema"])
+      else:
+        self.MODULES[module_name]["tables_exist"] = True
+      
+      self[table].AddModule(this_mod.TABLES[table]['modname'],this_mod.TABLES[table]['Triggers'])
+    
+    for this_view in this_mod.VIEWS.keys():
+      self.MODULES[module_name]['views'].append(this_view)
+      # Create Table View
+      if this_mod.VIEWS[this_view]['type'] == 'table':
+        self.CreateTableView(this_view,this_mod.VIEWS[this_view]['table'],this_mod.VIEWS[this_view]['query'],this_mod.VIEWS[this_view]['fields'])
+      
+      # Create Join View
+      elif this_mod.VIEWS[this_view]['type'] == 'join':
+        self.CreateJoinView(this_view,this_mod.VIEWS[this_view]['table'],this_mod.VIEWS[this_view]['fields'],this_mod.VIEWS[this_view]['joins'],this_mod.VIEWS[this_view]['where'],this_mod.VIEWS[this_view]['jointype'])
+
+    if not self.MODULES[module_name]["tables_exist"]:
+      this_mod.InitModule(self,self.MODULES.keys())
   
   def CreateTable(self,t,f):
     self[t] = SqliteMiddleware(f,self.DBFILE,t,True)
@@ -777,84 +830,3 @@ class SqliteMiddlewareGroup(SqliteDefGroup):
   def __populatetables(self):
     for this_table in self._SqliteDefGroup__listtables():
       self[this_table] = SqliteMiddleware(dbfile=self.DBFILE,table=this_table,uselog=True)
-
-
-class SqliteMiddlewareModuleBase(dict):
-  def __addtable(self,t,s):
-    self[t] = {"schema":s, "modname":self.__class__.__name__, "Triggers":SqliteMiddlewareModuleTriggerGroup()}
-  
-  def SetBeforeInsert(self,t,f,p=100):
-    self[t]["Triggers"].BeforeInsert = f
-    self[t]["Triggers"].BeforeInsertPriority = p
-  
-  def SetAfterInsert(self,t,f,p=100):
-    self[t]["Triggers"].AfterInsert = f
-    self[t]["Triggers"].AfterInsertPriority = p
-  
-  def SetBeforeUpdate(self,t,f,p=100):
-    self[t]["Triggers"].BeforeUpdate = f
-    self[t]["Triggers"].BeforeUpdatePriority = p
-  
-  def SetAfterUpdate(self,t,f,p=100):
-    self[t]["Triggers"].AfterUpdate = f
-    self[t]["Triggers"].AfterUpdatePriority = p
-  
-  def SetBeforeDelete(self,t,f,p=100):
-    self[t]["Triggers"].BeforeDelete = f
-    self[t]["Triggers"].BeforeDeletePriority = p
-  
-  def SetAfterDelete(self,t,f,p=100):
-    self[t]["Triggers"].AfterDelete = f
-    self[t]["Triggers"].AfterDeletePriority = p
-
-class SqliteMiddlewareModuleTriggerGroup:
-  def __init__(self):
-    self.BeforeInsert = None
-    self.BeforeInsertPriority = 100
-    self.AfterInsert = None
-    self.AfterInsertPriority = 100
-    self.BeforeUpdate = None
-    self.BeforeUpdatePriority = 100
-    self.AfterUpdate = None
-    self.AfterUpdatePriority = 100
-    self.BeforeDelete = None
-    self.BeforeDeletePriority = 100
-    self.AfterDelete = None
-    self.AfterDeletePriority = 100
-
-class SqliteMiddlewareLibrary:
-  def FieldChangesToEmpty(f,row):
-    if f in row.keys():
-      if len(row[f]) == 0:
-        return True
-    
-    return False
-  
-  def FieldChanges(f,row):
-    if f in row.keys():
-      if len(row[f]) >  0:
-        return True
-    
-    return False
-  
-  def FieldChangesTo(f,row,v):
-    if f in row.keys():
-      if row[f] == v:
-        return True
-    
-    return False
-  
-  def FieldChangesGreaterThan(f,row,v):
-    if f in row.keys():
-      if row[f] > v:
-        return True
-    
-    return False
-  
-  def FieldChangesLessThan(f,row,v):
-    if f in row.keys():
-      if row[f] < v:
-        return True
-    
-    return False
-
